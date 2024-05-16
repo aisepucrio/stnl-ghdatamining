@@ -33,3 +33,8 @@ Siga os passos abaixo para configurar o ambiente e executar a ferramenta:
 # Clone o repositório
 git clone https://github.com/seu-usuario/github-repository-data-miner.git
 cd github-repository-data-miner
+```
+
+Crie um arquivo .env no diretório raiz do projeto e adicione seu token pessoal do GitHub no seguinte formato:
+
+TOKEN=coloque_seu_token_aqui
