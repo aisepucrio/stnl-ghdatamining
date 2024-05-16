@@ -15,11 +15,15 @@ O GitHub Repository Data Miner é uma ferramenta projetada para extrair e analis
 
 ### Pré-requisitos
 
-Antes de iniciar, certifique-se de que você tem Python 3.8 ou superior instalado em seu sistema. Além disso, você precisará das seguintes bibliotecas Python:
+Antes de iniciar, certifique-se de que você tem Python 3.8 ou superior instalado em seu sistema. Você também precisará das seguintes bibliotecas Python:
 
-- `requests` para realizar chamadas à API do GitHub
-- `pandas` para manipulação e análise de dados
-- `matplotlib` para visualização de dados
+- `requests`: Para realizar chamadas à API do GitHub.
+- `json`: Para manipulação de dados em formato JSON.
+- `os`: Para interagir com o sistema operacional.
+- `dotenv`: Para carregar variáveis de ambiente do arquivo `.env`.
+- `tqdm`: Para mostrar barras de progresso em loops.
+- `urlparse`: Para analisar URLs.
+- `customtkinter`: Para criar interfaces gráficas de usuário.
 
 ### Instalação
 
@@ -29,6 +33,3 @@ Siga os passos abaixo para configurar o ambiente e executar a ferramenta:
 # Clone o repositório
 git clone https://github.com/seu-usuario/github-repository-data-miner.git
 cd github-repository-data-miner
-
-# Instale as dependências necessárias
-pip install -r requirements.txt
