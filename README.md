@@ -31,8 +31,8 @@ Siga os passos abaixo para configurar o ambiente e executar a ferramenta:
 
 ```bash
 # Clone o repositório
-git clone https://github.com/seu-usuario/github-repository-data-miner.git
-cd github-repository-data-miner
+git clone https://github.com/aisepucrio/stnl-ghdatamining.git
+cd stnl-ghdatamining
 ```
 
 Crie um arquivo .env no diretório raiz do projeto e adicione seu token pessoal do GitHub no seguinte formato:
