@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from tqdm.auto import tqdm
 from urllib.parse import urlparse
 import customtkinter
-import threading
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -16,9 +15,6 @@ headers = {
     'Authorization': f'token {TOKEN}',
     'Accept': 'application/vnd.github.v3+json'
 }
-
-# Variável de controle para parar o processo
-stop_process = False
 
 # Funções para obter informações do repositório
 def get_repo_name(repo_url):
@@ -56,7 +52,6 @@ def get_total_pages(url, headers):
         raise Exception(f'Erro inesperado: {str(e)}')
 
 def get_all_pages(url, headers, desc):
-    global stop_process
     results = []
     try:
         total_pages = get_total_pages(url, headers)
@@ -66,9 +61,6 @@ def get_all_pages(url, headers, desc):
 
     with tqdm(total=total_pages, desc=desc, unit="page") as pbar:
         for page in range(1, total_pages + 1):
-            if stop_process:
-                print("Processo interrompido pelo usuário.")
-                break
             try:
                 response = requests.get(f"{url}?page={page}&per_page=100", headers=headers)
                 response.raise_for_status()
@@ -163,57 +155,44 @@ def get_branches(repo_name, headers):
 
 # Função chamada ao clicar no botão "Obter Informações"
 def obter_informacoes():
-    global stop_process
-    stop_process = False  # Resetar a variável de controle
     repo_url = entry_url.get()
-    
-    def coleta_dados():
-        try:
-            repo_name = get_repo_name(repo_url)
-            data = {}
+    try:
+        repo_name = get_repo_name(repo_url)
+        data = {}
 
-            if switch_commits.get() == 1:
-                data['commits'] = get_commits(repo_name, headers)
-            if switch_issues.get() == 1:
-                data['issues'] = get_issues(repo_name, headers)
-            if switch_pull_requests.get() == 1:
-                data['pull_requests'] = get_pull_requests(repo_name, headers)
-            if switch_branches.get() == 1:
-                data['branches'] = get_branches(repo_name, headers)
+        if switch_commits.get() == 1:
+            data['commits'] = get_commits(repo_name, headers)
+        if switch_issues.get() == 1:
+            data['issues'] = get_issues(repo_name, headers)
+        if switch_pull_requests.get() == 1:
+            data['pull_requests'] = get_pull_requests(repo_name, headers)
+        if switch_branches.get() == 1:
+            data['branches'] = get_branches(repo_name, headers)
 
-            # Nome do arquivo JSON baseado na conta e nome do repositório
-            repo_owner, repo_name_only = repo_name.split('/')
-            file_name = f"{repo_owner}_{repo_name_only}_data.json"
+        # Nome do arquivo JSON baseado na conta e nome do repositório
+        repo_owner, repo_name_only = repo_name.split('/')
+        file_name = f"{repo_owner}_{repo_name_only}_data.json"
 
-            with open(file_name, 'w') as json_file:
-                json.dump(data, json_file, indent=4)
+        with open(file_name, 'w') as json_file:
+            json.dump(data, json_file, indent=4)
 
-            # Construir mensagem de resultado simplificada
-            message = ""
-            if 'commits' in data:
-                message += f"Commits: {len(data['commits'])}\n"
-            if 'issues' in data:
-                message += f"Issues: {len(data['issues'])}\n"
-            if 'pull_requests' in data:
-                message += f"Pull Requests: {len(data['pull_requests'])}\n"
-            if 'branches' in data:
-                message += f"Branches: {len(data['branches'])}\n"
+        # Construir mensagem de resultado simplificada
+        message = ""
+        if 'commits' in data:
+            message += f"Commits: {len(data['commits'])}\n"
+        if 'issues' in data:
+            message += f"Issues: {len(data['issues'])}\n"
+        if 'pull_requests' in data:
+            message += f"Pull Requests: {len(data['pull_requests'])}\n"
+        if 'branches' in data:
+            message += f"Branches: {len(data['branches'])}\n"
 
-            result_label.configure(text=message.strip())
+        result_label.configure(text=message.strip())
 
-        except ValueError as ve:
-            result_label.configure(text=str(ve))
-        except Exception as e:
-            result_label.configure(text=f"Erro inesperado: {str(e)}")
-    
-    thread = threading.Thread(target=coleta_dados)
-    thread.start()
-
-# Função chamada ao clicar no botão "Parar"
-def parar_processo():
-    global stop_process
-    stop_process = True
-    result_label.configure(text="Processo interrompido pelo usuário.")
+    except ValueError as ve:
+        result_label.configure(text=str(ve))
+    except Exception as e:
+        result_label.configure(text=f"Erro inesperado: {str(e)}")
 
 # Interface com customtkinter
 customtkinter.set_appearance_mode('dark')
@@ -250,9 +229,6 @@ switch_branches.pack(pady=5, padx=20, anchor='w')
 
 button = customtkinter.CTkButton(master=frame, text="Obter Informações", command=obter_informacoes, font=default_font)
 button.pack(pady=12, padx=10)
-
-stop_button = customtkinter.CTkButton(master=frame, text="Parar", command=parar_processo, font=default_font)
-stop_button.pack(pady=12, padx=10)
 
 result_label = customtkinter.CTkLabel(master=frame, text="", font=default_font)
 result_label.pack(pady=12, padx=10)
