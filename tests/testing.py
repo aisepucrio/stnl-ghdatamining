@@ -56,15 +56,9 @@ def get_total_pages(url, headers, params=None):
     except Exception as e:
         raise Exception(f'Unexpected error: {str(e)}')
 
-def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=None, end_date=None):
+def get_all_pages(url, headers, desc, params=None):
     global stop_process
     results = []
-
-    # Ensure start_date and end_date are datetime.date objects
-    if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
 
     try:
         total_pages = get_total_pages(url, headers, params)
@@ -85,22 +79,7 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
                     response = requests.get(f"{url}?page={page}&per_page=35", headers=headers)
                 response.raise_for_status()
                 data = response.json()
-
-                if date_key and start_date and end_date:
-                    filtered_data = []
-                    for item in data:
-                        if 'commit' in item:
-                            item_date = datetime.strptime(item['commit']['author']['date'], '%Y-%m-%dT%H:%M:%SZ').date()
-                        else:
-                            item_date = datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date()
-                        if start_date <= item_date <= end_date:
-                            filtered_data.append(item)
-                        elif item_date < start_date:
-                            break
-                    results.extend(filtered_data)
-                else:
-                    results.extend(data)
-                
+                results.extend(data)
                 pbar.update(1)
             except requests.exceptions.RequestException as e:
                 print(f'Error fetching data from URL: {url} with status {e.response.status_code}')
@@ -119,7 +98,7 @@ def get_comments_with_initial(issue_url, headers, initial_comment, issue_number,
         'since': start_date,
         'until': end_date
     }
-    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}', params, 'created_at', start_date, end_date)
+    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}', params)
     essential_comments = [{
         'user': initial_comment['user']['login'],
         'body': initial_comment['body'],
@@ -139,7 +118,7 @@ def get_commits(repo_name, headers, start_date, end_date):
         'until': end_date,
         'per_page': 35
     }
-    commits = get_all_pages(url, headers, 'Fetching commits', params, 'commit', start_date, end_date)
+    commits = get_all_pages(url, headers, 'Fetching commits', params)
     essential_commits = [{
         'sha': commit['sha'],
         'message': commit['commit']['message'],
@@ -155,7 +134,7 @@ def get_issues(repo_name, headers, start_date, end_date):
         'until': end_date,
         'per_page': 35
     }
-    issues = get_all_pages(url, headers, 'Fetching issues', params, 'created_at', start_date, end_date)
+    issues = get_all_pages(url, headers, 'Fetching issues', params)
     essential_issues = []
     for issue in issues:
         if 'number' in issue and 'title' in issue and 'state' in issue and 'user' in issue and 'login' in issue['user']:
@@ -182,7 +161,7 @@ def get_pull_requests(repo_name, headers, start_date, end_date):
         'until': end_date,
         'per_page': 35
     }
-    pull_requests = get_all_pages(url, headers, 'Fetching pull requests', params, 'created_at', start_date, end_date)
+    pull_requests = get_all_pages(url, headers, 'Fetching pull requests', params)
     essential_pull_requests = []
     for pr in pull_requests:
         if 'number' in pr and 'title' in pr and 'state' in pr and 'user' in pr and 'login' in pr['user']:
@@ -221,33 +200,29 @@ def get_information():
 
     def collect_data():
         try:
-            print("Start collecting data...")  # Debug message
             repo_name = get_repo_name(repo_url)
-            print(f"Repository name: {repo_name}")  # Debug message
             data = {}
 
             # Convert dates to ISO 8601 format
-            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
-            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
-
-            print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
+            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').isoformat() + 'Z'
+            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').isoformat() + 'Z'
 
             if switch_commits.get() == 1:
                 commits = get_commits(repo_name, headers, start_date_iso, end_date_iso)
                 data['commits'] = commits
-                print(f"Commits: {len(commits)}")  # Debug message
+                print(f"Commits: {len(commits)}")
             if switch_issues.get() == 1:
                 issues = get_issues(repo_name, headers, start_date_iso, end_date_iso)
                 data['issues'] = issues
-                print(f"Issues: {len(issues)}")  # Debug message
+                print(f"Issues: {len(issues)}")
             if switch_pull_requests.get() == 1:
                 pull_requests = get_pull_requests(repo_name, headers, start_date_iso, end_date_iso)
                 data['pull_requests'] = pull_requests
-                print(f"Pull Requests: {len(pull_requests)}")  # Debug message
+                print(f"Pull Requests: {len(pull_requests)}")
             if switch_branches.get() == 1:
                 branches = get_branches(repo_name, headers)
                 data['branches'] = branches
-                print(f"Branches: {len(branches)}")  # Debug message
+                print(f"Branches: {len(branches)}")
 
             # JSON file name based on account and repository name
             repo_owner, repo_name_only = repo_name.split('/')
@@ -274,10 +249,8 @@ def get_information():
             result_label.configure(text=message.strip())
 
         except ValueError as ve:
-            print(f"ValueError: {str(ve)}")  # Debug message
             result_label.configure(text=str(ve))
         except Exception as e:
-            print(f"Exception: {str(e)}")  # Debug message
             result_label.configure(text=f"Unexpected error: {str(e)}")
     
     thread = threading.Thread(target=collect_data)

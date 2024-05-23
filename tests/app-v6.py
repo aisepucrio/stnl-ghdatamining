@@ -32,9 +32,9 @@ def get_repo_name(repo_url):
     except Exception as e:
         raise ValueError("Error parsing repository URL. Check the format and try again.")
 
-def get_total_pages(url, headers, params=None):
+def get_total_pages(url, headers):
     try:
-        response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
+        response = requests.get(f"{url}?per_page=1", headers=headers)
         response.raise_for_status()
         
         if 'Link' in response.headers:
@@ -56,18 +56,16 @@ def get_total_pages(url, headers, params=None):
     except Exception as e:
         raise Exception(f'Unexpected error: {str(e)}')
 
-def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=None, end_date=None):
+def get_all_pages(url, headers, desc, start_date=None, end_date=None, date_key=None):
     global stop_process
     results = []
-
-    # Ensure start_date and end_date are datetime.date objects
-    if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-
+    
+    if start_date and end_date:
+        start_date = datetime.strptime(start_date, '%d/%m/%Y').date()
+        end_date = datetime.strptime(end_date, '%d/%m/%Y').date()
+    
     try:
-        total_pages = get_total_pages(url, headers, params)
+        total_pages = get_total_pages(url, headers)
     except Exception as e:
         print(e)
         return results
@@ -78,25 +76,28 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
                 print("Process stopped by the user.")
                 break
             try:
-                if params:
-                    params['page'] = page
-                    response = requests.get(url, headers=headers, params=params)
-                else:
-                    response = requests.get(f"{url}?page={page}&per_page=35", headers=headers)
+                response = requests.get(f"{url}?page={page}&per_page=35", headers=headers)
                 response.raise_for_status()
                 data = response.json()
 
                 if date_key and start_date and end_date:
                     filtered_data = []
                     for item in data:
-                        if 'commit' in item:
+                        if 'commit' in date_key:
                             item_date = datetime.strptime(item['commit']['author']['date'], '%Y-%m-%dT%H:%M:%SZ').date()
+                            name = item['commit']['message']
                         else:
                             item_date = datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date()
+                            name = item['title']
+
+                        #print(f'\n\nItem date: {item_date}\nStart date: {start_date}\nEnd date: {end_date}\nName: {name}\n\n')
+                        
                         if start_date <= item_date <= end_date:
                             filtered_data.append(item)
                         elif item_date < start_date:
                             break
+                    if not filtered_data:
+                        break
                     results.extend(filtered_data)
                 else:
                     results.extend(data)
@@ -111,15 +112,11 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
 
     if not results:
         print(f'No data found for {desc} in the given date range.')
-
+        
     return results
 
 def get_comments_with_initial(issue_url, headers, initial_comment, issue_number, start_date, end_date):
-    params = {
-        'since': start_date,
-        'until': end_date
-    }
-    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}', params, 'created_at', start_date, end_date)
+    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}', start_date, end_date, 'created_at')
     essential_comments = [{
         'user': initial_comment['user']['login'],
         'body': initial_comment['body'],
@@ -134,12 +131,7 @@ def get_comments_with_initial(issue_url, headers, initial_comment, issue_number,
 
 def get_commits(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/commits'
-    params = {
-        'since': start_date,
-        'until': end_date,
-        'per_page': 35
-    }
-    commits = get_all_pages(url, headers, 'Fetching commits', params, 'commit', start_date, end_date)
+    commits = get_all_pages(url, headers, 'Fetching commits', start_date, end_date, "['commit']['author']['date']")
     essential_commits = [{
         'sha': commit['sha'],
         'message': commit['commit']['message'],
@@ -150,12 +142,7 @@ def get_commits(repo_name, headers, start_date, end_date):
 
 def get_issues(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/issues'
-    params = {
-        'since': start_date,
-        'until': end_date,
-        'per_page': 35
-    }
-    issues = get_all_pages(url, headers, 'Fetching issues', params, 'created_at', start_date, end_date)
+    issues = get_all_pages(url, headers, 'Fetching issues', start_date, end_date, 'created_at')
     essential_issues = []
     for issue in issues:
         if 'number' in issue and 'title' in issue and 'state' in issue and 'user' in issue and 'login' in issue['user']:
@@ -177,12 +164,7 @@ def get_issues(repo_name, headers, start_date, end_date):
 
 def get_pull_requests(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/pulls'
-    params = {
-        'since': start_date,
-        'until': end_date,
-        'per_page': 35
-    }
-    pull_requests = get_all_pages(url, headers, 'Fetching pull requests', params, 'created_at', start_date, end_date)
+    pull_requests = get_all_pages(url, headers, 'Fetching pull requests', start_date, end_date, 'created_at')
     essential_pull_requests = []
     for pr in pull_requests:
         if 'number' in pr and 'title' in pr and 'state' in pr and 'user' in pr and 'login' in pr['user']:
@@ -218,36 +200,28 @@ def get_information():
     repo_url = entry_url.get()
     start_date = entry_start_date.get()
     end_date = entry_end_date.get()
-
+    
     def collect_data():
         try:
-            print("Start collecting data...")  # Debug message
             repo_name = get_repo_name(repo_url)
-            print(f"Repository name: {repo_name}")  # Debug message
             data = {}
 
-            # Convert dates to ISO 8601 format
-            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
-            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
-
-            print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
-
             if switch_commits.get() == 1:
-                commits = get_commits(repo_name, headers, start_date_iso, end_date_iso)
+                commits = get_commits(repo_name, headers, start_date, end_date)
                 data['commits'] = commits
-                print(f"Commits: {len(commits)}")  # Debug message
+                print(f"Commits: {len(commits)}")
             if switch_issues.get() == 1:
-                issues = get_issues(repo_name, headers, start_date_iso, end_date_iso)
+                issues = get_issues(repo_name, headers, start_date, end_date)
                 data['issues'] = issues
-                print(f"Issues: {len(issues)}")  # Debug message
+                print(f"Issues: {len(issues)}")
             if switch_pull_requests.get() == 1:
-                pull_requests = get_pull_requests(repo_name, headers, start_date_iso, end_date_iso)
+                pull_requests = get_pull_requests(repo_name, headers, start_date, end_date)
                 data['pull_requests'] = pull_requests
-                print(f"Pull Requests: {len(pull_requests)}")  # Debug message
+                print(f"Pull Requests: {len(pull_requests)}")
             if switch_branches.get() == 1:
                 branches = get_branches(repo_name, headers)
                 data['branches'] = branches
-                print(f"Branches: {len(branches)}")  # Debug message
+                print(f"Branches: {len(branches)}")
 
             # JSON file name based on account and repository name
             repo_owner, repo_name_only = repo_name.split('/')
@@ -274,10 +248,8 @@ def get_information():
             result_label.configure(text=message.strip())
 
         except ValueError as ve:
-            print(f"ValueError: {str(ve)}")  # Debug message
             result_label.configure(text=str(ve))
         except Exception as e:
-            print(f"Exception: {str(e)}")  # Debug message
             result_label.configure(text=f"Unexpected error: {str(e)}")
     
     thread = threading.Thread(target=collect_data)

@@ -1,0 +1,28 @@
+{
+    "commits": [
+        {
+            "sha": "ab6a2114433a3b5b555983dcb9b752a85255f04b",
+            "message": "x86/resctrl: Fix potential memory leak\n\nset_cache_qos_cfg() is leaking memory when the given level is not\nRDT_RESOURCE_L3 or RDT_RESOURCE_L2. At the moment, this function is\ncalled with only valid levels but move the allocation after the valid\nlevel checks in order to make it more robust and future proof.\n\n [ bp: Massage commit message. ]\n\nFixes: 99adde9b370de (\"x86/intel_rdt: Enable L2 CDP in MSR IA32_L2_QOS_CFG\")\nSigned-off-by: Shakeel Butt <shakeelb@google.com>\nSigned-off-by: Borislav Petkov <bp@suse.de>\nCc: Fenghua Yu <fenghua.yu@intel.com>\nCc: \"H. Peter Anvin\" <hpa@zytor.com>\nCc: Ingo Molnar <mingo@redhat.com>\nCc: Reinette Chatre <reinette.chatre@intel.com>\nCc: Thomas Gleixner <tglx@linutronix.de>\nCc: x86-ml <x86@kernel.org>\nLink: https://lkml.kernel.org/r/20200102165844.133133-1-shakeelb@google.com",
+            "date": "2020-01-02T16:58:44Z",
+            "author": "Shakeel Butt"
+        },
+        {
+            "sha": "69afc4b623088665677be09ea59627aaf080bff7",
+            "message": "eeprom: at24: sort headers alphabetically\n\nFor consistency and easier maintenance: sort the headers alphabetically.\n\nSigned-off-by: Bartosz Golaszewski <bgolaszewski@baylibre.com>",
+            "date": "2020-01-02T16:56:32Z",
+            "author": "Bartosz Golaszewski"
+        },
+        {
+            "sha": "efb3ecdcdb47f28b72e312fdca0ff923aa3d19bb",
+            "message": "Merge tag 'usb-serial-5.5-rc5' of https://git.kernel.org/pub/scm/linux/kernel/git/johan/usb-serial into usb-linus\n\nJohan writes:\n\nUSB-serial fixes for 5.5-rc5\n\nHere's a couple of new modem device ids, including a new quirk for\ndevices that expect zero-length packets.\n\nDue to the holidays, only the first one has been in linux-next and with\nno reported issues.\n\nSigned-off-by: Johan Hovold <johan@kernel.org>\n\n* tag 'usb-serial-5.5-rc5' of https://git.kernel.org/pub/scm/linux/kernel/git/johan/usb-serial:\n  USB: serial: option: add ZLP support for 0x1bc7/0x9010\n  USB: serial: option: add Telit ME910G1 0x110a composition",
+            "date": "2020-01-02T11:37:40Z",
+            "author": "Greg Kroah-Hartman"
+        },
+        {
+            "sha": "5041a58d5ba5ec62b8126a729d114430a80c835d",
+            "message": "Merge tag 'phy-for-5.5-rc' of git://git.kernel.org/pub/scm/linux/kernel/git/kishon/linux-phy into usb-linus\n\nKishon writes:\n\nphy: for 5.5-rc\n\n*) Fix error path in cpcap-usb driver when no host driver is loaded to\n   avoid debug serial console from stop working\n*) Fix to let USB host idle before switching to UART mode in cpcap-usb\n   driver in order to avoid flakey enumeration next time\n*) Prevent USB line glitches from waking up modem by enabling the USB\n   lines (GPIO mux) after configuring the cpcap-usb PHY\n*) Improve host vs docked mode detection in cpcap-usb PHY driver to keep\n   VBUS enabled in host mode\n*) Fix to prevent cpcap-usb PHY driver from enabling the PHY twice\n*) Increase PHY ready timeout in qcom-qmp PHY as it takes more than 1ms\n   to initialize\n*) Round clock rate down to closest 1000 Hz in phy-rockchip-inno-hdmi to\n   prevent wrong pixel clock to be used and result in no-signal when\n   configuring a mode on RK3328\n\n* tag 'phy-for-5.5-rc' of git://git.kernel.org/pub/scm/linux/kernel/git/kishon/linux-phy:\n  phy/rockchip: inno-hdmi: round clock rate down to closest 1000 Hz\n  phy: cpcap-usb: Drop extra write to usb2 register\n  phy: cpcap-usb: Improve host vs docked mode detection\n  phy: cpcap-usb: Prevent USB line glitches from waking up modem\n  phy: mapphone-mdm6600: Fix uninitialized status value regression\n  phy: cpcap-usb: Fix flakey host idling and enumerating of devices\n  phy: qcom-qmp: Increase PHY ready timeout\n  phy: cpcap-usb: Fix error path when no host driver is loaded",
+            "date": "2020-01-02T11:36:49Z",
+            "author": "Greg Kroah-Hartman"
+        }
+    ]
+}
