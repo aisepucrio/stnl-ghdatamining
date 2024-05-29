@@ -212,14 +212,7 @@ def get_branches(repo_name, headers):
     return essential_branches
 
 # Function called when clicking the "Get Information" button
-def get_information():
-    global stop_process
-    stop_process = False  # Reset the control variable
-    repo_url = entry_url.get()
-    start_date = entry_start_date.get()
-    end_date = entry_end_date.get()
-
-    def collect_data():
+def collect_data():
         try:
             print("Start collecting data...")  # Debug message
             repo_name = get_repo_name(repo_url)
@@ -279,9 +272,6 @@ def get_information():
         except Exception as e:
             print(f"Exception: {str(e)}")  # Debug message
             result_label.configure(text=f"Unexpected error: {str(e)}")
-    
-    thread = threading.Thread(target=collect_data)
-    thread.start()
 
 # Function called when clicking the "Stop" button
 def stop_process_function():
