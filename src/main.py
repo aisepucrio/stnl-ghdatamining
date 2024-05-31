@@ -3,7 +3,7 @@ import json
 import os
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 import customtkinter
 import threading
 from datetime import datetime
@@ -45,14 +45,17 @@ def get_total_pages(url, headers, params=None):
                     return int(last_page_url.split('=')[-1])
         return 1
     except requests.exceptions.RequestException as e:
-        if e.response.status_code == 404:
-            raise ValueError("Repository not found.")
-        elif e.response.status_code == 401:
-            raise ValueError("Invalid or expired token.")
-        elif e.response.status_code == 403:
-            raise ValueError("Request limit reached.")
+        if e.response is not None:
+            if e.response.status_code == 404:
+                raise ValueError("Repository not found.")
+            elif e.response.status_code == 401:
+                raise ValueError("Invalid or expired token.")
+            elif e.response.status_code == 403:
+                raise ValueError("Request limit reached.")
+            else:
+                raise Exception(f'Error fetching data from URL: {url} with status {e.response.status_code}')
         else:
-            raise Exception(f'Error fetching data from URL: {url} with status {e.response.status_code}')
+            raise Exception(f'Error fetching data from URL: {url} - {str(e)}')
     except Exception as e:
         raise Exception(f'Unexpected error: {str(e)}')
 
@@ -62,9 +65,9 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
 
     # Ensure start_date and end_date are datetime.date objects
     if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        start_date = datetime.strptime(start_date[:10], '%Y-%m-%d').date()
     if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date[:10], '%Y-%m-%d').date()
 
     try:
         total_pages = get_total_pages(url, headers, params)
@@ -80,30 +83,29 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
             try:
                 if params:
                     params['page'] = page
-                    response = requests.get(url, headers=headers, params=params)
+                    full_url = f"{url}?{urlencode(params)}"
                 else:
-                    response = requests.get(f"{url}?page={page}&per_page=35", headers=headers)
+                    full_url = f"{url}?page={page}"
+                response = requests.get(full_url, headers=headers)
                 response.raise_for_status()
                 data = response.json()
 
                 if date_key and start_date and end_date:
                     filtered_data = []
                     for item in data:
-                        if 'commit' in item:
-                            item_date = datetime.strptime(item['commit']['author']['date'], '%Y-%m-%dT%H:%M:%SZ').date()
-                        else:
-                            item_date = datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date()
+                        item_date = datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date()
                         if start_date <= item_date <= end_date:
                             filtered_data.append(item)
-                        elif item_date < start_date:
-                            break
                     results.extend(filtered_data)
                 else:
                     results.extend(data)
                 
                 pbar.update(1)
             except requests.exceptions.RequestException as e:
-                print(f'Error fetching data from URL: {url} with status {e.response.status_code}')
+                if e.response is not None:
+                    print(f'Error fetching data from URL: {url} with status {e.response.status_code}')
+                else:
+                    print(f'Error fetching data from URL: {url} - {str(e)}')
                 break
             except Exception as e:
                 print(f'Unexpected error fetching data from URL: {url} - {str(e)}')
@@ -114,12 +116,8 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
 
     return results
 
-def get_comments_with_initial(issue_url, headers, initial_comment, issue_number, start_date, end_date):
-    params = {
-        'since': start_date,
-        'until': end_date
-    }
-    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}', params, 'created_at', start_date, end_date)
+def get_comments_with_initial(issue_url, headers, initial_comment, issue_number):
+    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}')
     essential_comments = [{
         'user': initial_comment['user']['login'],
         'body': initial_comment['body'],
@@ -135,11 +133,11 @@ def get_comments_with_initial(issue_url, headers, initial_comment, issue_number,
 def get_commits(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/commits'
     params = {
-        'since': start_date,
-        'until': end_date,
+        'since': f'{start_date}T00:00:01Z',
+        'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
-    commits = get_all_pages(url, headers, 'Fetching commits', params, 'commit', start_date, end_date)
+    commits = get_all_pages(url, headers, 'Fetching commits', params)
     essential_commits = [{
         'sha': commit['sha'],
         'message': commit['commit']['message'],
@@ -151,8 +149,8 @@ def get_commits(repo_name, headers, start_date, end_date):
 def get_issues(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/issues'
     params = {
-        'since': start_date,
-        'until': end_date,
+        'since': f'{start_date}T00:00:01Z',
+        'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
     issues = get_all_pages(url, headers, 'Fetching issues', params, 'created_at', start_date, end_date)
@@ -165,7 +163,7 @@ def get_issues(repo_name, headers, start_date, end_date):
                 'body': issue['body'],
                 'created_at': issue['created_at']
             }
-            comments = get_comments_with_initial(issue_comments_url, headers, initial_comment, issue['number'], start_date, end_date)
+            comments = get_comments_with_initial(issue_comments_url, headers, initial_comment, issue['number'])
             essential_issues.append({
                 'number': issue['number'],
                 'title': issue['title'],
@@ -178,8 +176,8 @@ def get_issues(repo_name, headers, start_date, end_date):
 def get_pull_requests(repo_name, headers, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/pulls'
     params = {
-        'since': start_date,
-        'until': end_date,
+        'since': f'{start_date}T00:00:01Z',
+        'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
     pull_requests = get_all_pages(url, headers, 'Fetching pull requests', params, 'created_at', start_date, end_date)
@@ -192,7 +190,7 @@ def get_pull_requests(repo_name, headers, start_date, end_date):
                 'body': pr['body'],
                 'created_at': pr['created_at']
             }
-            comments = get_comments_with_initial(pr_comments_url, headers, initial_comment, pr['number'], start_date, end_date)
+            comments = get_comments_with_initial(pr_comments_url, headers, initial_comment, pr['number'])
             essential_pull_requests.append({
                 'number': pr['number'],
                 'title': pr['title'],
@@ -226,9 +224,9 @@ def get_information():
             print(f"Repository name: {repo_name}")  # Debug message
             data = {}
 
-            # Convert dates to ISO 8601 format
-            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d')
-            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d')
+            # Convert dates to ISO 8601 format with the required time adjustments
+            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d') + 'T00:00:01Z'
+            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d') + 'T23:59:59Z'
 
             print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
 
