@@ -12,16 +12,23 @@ from time import time
 
 # Load environment variables
 load_dotenv()
-TOKEN = os.getenv('TOKEN')
+TOKENS = os.getenv('TOKENS').split(',')
+current_token_index = 0
 
-# Define authentication headers
+# Define authentication headers with the first token
 headers = {
-    'Authorization': f'token {TOKEN}',
+    'Authorization': f'token {TOKENS[current_token_index]}',
     'Accept': 'application/vnd.github.v3+json'
 }
 
 # Control variable to stop the process
 stop_process = False
+
+def rotate_token():
+    global current_token_index, headers
+    current_token_index = (current_token_index + 1) % len(TOKENS)
+    headers['Authorization'] = f'token {TOKENS[current_token_index]}'
+    print(f"Rotated to token {current_token_index + 1}")
 
 def get_repo_name(repo_url):
     try:
@@ -34,31 +41,31 @@ def get_repo_name(repo_url):
         raise ValueError("Error parsing repository URL. Check the format and try again.")
 
 def get_total_pages(url, headers, params=None):
-    try:
-        response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
-        response.raise_for_status()
-        
-        if 'Link' in response.headers:
-            links = response.headers['Link'].split(',')
-            for link in links:
-                if 'rel="last"' in link:
-                    last_page_url = link[link.find('<') + 1:link.find('>')]
-                    return int(last_page_url.split('=')[-1])
-        return 1
-    except requests.exceptions.RequestException as e:
-        if e.response is not None:
-            if e.response.status_code == 404:
-                raise ValueError("Repository not found.")
-            elif e.response.status_code == 401:
-                raise ValueError("Invalid or expired token.")
-            elif e.response.status_code == 403:
-                raise ValueError("Request limit reached.")
+    max_retries = len(TOKENS)
+    attempts = 0
+    
+    while attempts < max_retries:
+        try:
+            response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
+            response.raise_for_status()
+            
+            if 'Link' in response.headers:
+                links = response.headers['Link'].split(',')
+                for link in links:
+                    if 'rel="last"' in link:
+                        last_page_url = link[link.find('<') + 1:link.find('>')]
+                        return int(last_page_url.split('=')[-1])
+            return 1
+        except requests.exceptions.RequestException as e:
+            if e.response is not None and e.response.status_code == 403:
+                print(f"Token limit reached for token {current_token_index + 1}. Rotating token...")
+                rotate_token()
+                attempts += 1
             else:
-                raise Exception(f'Error fetching data from URL: {url} with status {e.response.status_code}')
-        else:
-            raise Exception(f'Error fetching data from URL: {url} - {str(e)}')
-    except Exception as e:
-        raise Exception(f'Unexpected error: {str(e)}')
+                raise Exception(f'Error fetching data from URL: {url} - {str(e)}')
+        except Exception as e:
+            raise Exception(f'Unexpected error: {str(e)}')
+    raise Exception("All tokens have reached the limit.")
 
 def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=None, end_date=None):
     global stop_process
@@ -103,16 +110,28 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
     return results
 
 def fetch_page_data(url, headers, date_key, start_date, end_date):
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        if date_key and start_date and end_date:
-            return [item for item in data if start_date <= datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date() <= end_date]
-        return data
-    except Exception as e:
-        print(f"Error fetching data from URL: {url} - {str(e)}")
-        return []
+    global stop_process
+    max_retries = len(TOKENS)
+    attempts = 0
+    
+    while attempts < max_retries:
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            if date_key and start_date and end_date:
+                return [item for item in data if start_date <= datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date() <= end_date]
+            return data
+        except requests.exceptions.RequestException as e:
+            if e.response is not None and e.response.status_code == 403:
+                print(f"Token limit reached for token {current_token_index + 1}. Rotating token...")
+                rotate_token()
+                attempts += 1
+            else:
+                print(f"Error fetching data from URL: {url} - {str(e)}")
+                return []
+    print("All tokens have reached the limit.")
+    return []
 
 def get_comments_with_initial(issue_url, headers, initial_comment, issue_number):
     comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}')
@@ -231,7 +250,8 @@ def get_information():
 
             with ProcessPoolExecutor(max_workers=24) as executor:
                 future_commits = executor.submit(get_commits, repo_name, headers, start_date_iso, end_date_iso) if switch_commits.get() == 1 else None
-                future_issues = executor.submit(get_issues, repo_name, headers, start_date_iso, end_date_iso) if switch_issues.get() == 1 else None
+                future_issues = executor.submit(get_issues, repo_name,
+                headers, start_date_iso, end_date_iso) if switch_issues.get() == 1 else None
                 future_pull_requests = executor.submit(get_pull_requests, repo_name, headers, start_date_iso, end_date_iso) if switch_pull_requests.get() == 1 else None
                 future_branches = executor.submit(get_branches, repo_name, headers) if switch_branches.get() == 1 else None
 
@@ -287,7 +307,6 @@ def get_information():
     
     thread = threading.Thread(target=collect_data)
     thread.start()
-    
 
 # Função chamada ao clicar no botão "Stop"
 def stop_process_function():
