@@ -7,7 +7,6 @@ from urllib.parse import urlparse, urlencode
 import customtkinter
 import threading
 from datetime import datetime
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from time import time
 
 # Load environment variables
@@ -23,6 +22,7 @@ headers = {
 # Control variable to stop the process
 stop_process = False
 
+# Functions to get repository information
 def get_repo_name(repo_url):
     try:
         path = urlparse(repo_url).path
@@ -77,42 +77,45 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
         return results
 
     with tqdm(total=total_pages, desc=desc, unit="page") as pbar:
-        with ProcessPoolExecutor(max_workers=8) as executor:
-            futures = []
-            for page in range(1, total_pages + 1):
-                if stop_process:
-                    print("Process stopped by the user.")
-                    break
+        for page in range(1, total_pages + 1):
+            if stop_process:
+                print("Process stopped by the user.")
+                break
+            try:
                 if params:
                     params['page'] = page
                     full_url = f"{url}?{urlencode(params)}"
                 else:
                     full_url = f"{url}?page={page}"
-                futures.append(executor.submit(fetch_page_data, full_url, headers, date_key, start_date, end_date))
+                response = requests.get(full_url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
 
-            for future in as_completed(futures):
-                try:
-                    results.extend(future.result())
-                    pbar.update(1)
-                except Exception as e:
-                    print(f"Error fetching page data: {str(e)}")
+                if date_key and start_date and end_date:
+                    filtered_data = []
+                    for item in data:
+                        item_date = datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date()
+                        if start_date <= item_date <= end_date:
+                            filtered_data.append(item)
+                    results.extend(filtered_data)
+                else:
+                    results.extend(data)
+                
+                pbar.update(1)
+            except requests.exceptions.RequestException as e:
+                if e.response is not None:
+                    print(f'Error fetching data from URL: {url} with status {e.response.status_code}')
+                else:
+                    print(f'Error fetching data from URL: {url} - {str(e)}')
+                break
+            except Exception as e:
+                print(f'Unexpected error fetching data from URL: {url} - {str(e)}')
+                break
 
     if not results:
         print(f'No data found for {desc} in the given date range.')
 
     return results
-
-def fetch_page_data(url, headers, date_key, start_date, end_date):
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        if date_key and start_date and end_date:
-            return [item for item in data if start_date <= datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date() <= end_date]
-        return data
-    except Exception as e:
-        print(f"Error fetching data from URL: {url} - {str(e)}")
-        return []
 
 def get_comments_with_initial(issue_url, headers, initial_comment, issue_number):
     comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}')
@@ -207,7 +210,7 @@ def get_branches(repo_name, headers):
     } for branch in branches if 'name' in branch and 'commit' in branch and 'sha' in branch['commit']]
     return essential_branches
 
-# Função chamada ao clicar no botão "Get Information"
+# Function called when clicking the "Get Information" button
 def get_information():
     global stop_process
     stop_process = False  # Reset the control variable
@@ -229,28 +232,22 @@ def get_information():
 
             print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
 
-            with ProcessPoolExecutor(max_workers=4) as executor:
-                future_commits = executor.submit(get_commits, repo_name, headers, start_date_iso, end_date_iso) if switch_commits.get() == 1 else None
-                future_issues = executor.submit(get_issues, repo_name, headers, start_date_iso, end_date_iso) if switch_issues.get() == 1 else None
-                future_pull_requests = executor.submit(get_pull_requests, repo_name, headers, start_date_iso, end_date_iso) if switch_pull_requests.get() == 1 else None
-                future_branches = executor.submit(get_branches, repo_name, headers) if switch_branches.get() == 1 else None
-
-                if future_commits:
-                    commits = future_commits.result()
-                    data['commits'] = commits
-                    print(f"Commits: {len(commits)}")  # Debug message
-                if future_issues:
-                    issues = future_issues.result()
-                    data['issues'] = issues
-                    print(f"Issues: {len(issues)}")  # Debug message
-                if future_pull_requests:
-                    pull_requests = future_pull_requests.result()
-                    data['pull_requests'] = pull_requests
-                    print(f"Pull Requests: {len(pull_requests)}")  # Debug message
-                if future_branches:
-                    branches = future_branches.result()
-                    data['branches'] = branches
-                    print(f"Branches: {len(branches)}")  # Debug message
+            if switch_commits.get() == 1:
+                commits = get_commits(repo_name, headers, start_date_iso, end_date_iso)
+                data['commits'] = commits
+                print(f"Commits: {len(commits)}")  # Debug message
+            if switch_issues.get() == 1:
+                issues = get_issues(repo_name, headers, start_date_iso, end_date_iso)
+                data['issues'] = issues
+                print(f"Issues: {len(issues)}")  # Debug message
+            if switch_pull_requests.get() == 1:
+                pull_requests = get_pull_requests(repo_name, headers, start_date_iso, end_date_iso)
+                data['pull_requests'] = pull_requests
+                print(f"Pull Requests: {len(pull_requests)}")  # Debug message
+            if switch_branches.get() == 1:
+                branches = get_branches(repo_name, headers)
+                data['branches'] = branches
+                print(f"Branches: {len(branches)}")  # Debug message
 
             # JSON file name based on account and repository name
             repo_owner, repo_name_only = repo_name.split('/')
@@ -287,15 +284,14 @@ def get_information():
     
     thread = threading.Thread(target=collect_data)
     thread.start()
-    
 
-# Função chamada ao clicar no botão "Stop"
+# Function called when clicking the "Stop" button
 def stop_process_function():
     global stop_process
     stop_process = True
     result_label.configure(text="Process stopped by the user.")
 
-# Interface com customtkinter
+# Interface with customtkinter
 customtkinter.set_appearance_mode('dark')
 customtkinter.set_default_color_theme("dark-blue")
 
