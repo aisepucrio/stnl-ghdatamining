@@ -13,24 +13,15 @@ from time import time
 # Load environment variables
 load_dotenv()
 TOKENS = os.getenv('TOKENS').split(',')
-current_token_index = 0
 
-# Define authentication headers with the first token
+# Define authentication headers
 headers = {
-    'Authorization': f'token {TOKENS[current_token_index]}',
+    'Authorization': f'token {TOKEN}',
     'Accept': 'application/vnd.github.v3+json'
 }
 
 # Control variable to stop the process
 stop_process = False
-
-LOW_LIMIT_THRESHOLD = 1750  # Threshold to trigger token rotation
-
-def rotate_token():
-    global current_token_index, headers
-    current_token_index = (current_token_index + 1) % len(TOKENS)
-    headers['Authorization'] = f'token {TOKENS[current_token_index]}'
-    print(f"Rotated to token {current_token_index + 1}")
 
 def get_repo_name(repo_url):
     try:
@@ -43,39 +34,31 @@ def get_repo_name(repo_url):
         raise ValueError("Error parsing repository URL. Check the format and try again.")
 
 def get_total_pages(url, headers, params=None):
-    max_retries = len(TOKENS)
-    attempts = 0
-    
-    while attempts < max_retries:
-        try:
-            response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
-            response.raise_for_status()
-            
-            # Print rate limit information and rotate token if remaining limit is very low
-            rate_limit_remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
-            print_rate_limit_info(response.headers)
-            if rate_limit_remaining < LOW_LIMIT_THRESHOLD:
-                print(f"Token limit is low ({rate_limit_remaining} remaining). Rotating token...")
-                rotate_token()
-                attempts += 1
+    try:
+        response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
+        response.raise_for_status()
+        
+        if 'Link' in response.headers:
+            links = response.headers['Link'].split(',')
+            for link in links:
+                if 'rel="last"' in link:
+                    last_page_url = link[link.find('<') + 1:link.find('>')]
+                    return int(last_page_url.split('=')[-1])
+        return 1
+    except requests.exceptions.RequestException as e:
+        if e.response is not None:
+            if e.response.status_code == 404:
+                raise ValueError("Repository not found.")
+            elif e.response.status_code == 401:
+                raise ValueError("Invalid or expired token.")
+            elif e.response.status_code == 403:
+                raise ValueError("Request limit reached.")
             else:
-                if 'Link' in response.headers:
-                    links = response.headers['Link'].split(',')
-                    for link in links:
-                        if 'rel="last"' in link:
-                            last_page_url = link[link.find('<') + 1:link.find('>')]
-                            return int(last_page_url.split('=')[-1])
-                return 1
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code == 403:
-                print(f"Token limit reached for token {current_token_index + 1}. Rotating token...")
-                rotate_token()
-                attempts += 1
-            else:
-                raise Exception(f'Error fetching data from URL: {url} - {str(e)}')
-        except Exception as e:
-            raise Exception(f'Unexpected error: {str(e)}')
-    raise Exception("All tokens have reached the limit.")
+                raise Exception(f'Error fetching data from URL: {url} with status {e.response.status_code}')
+        else:
+            raise Exception(f'Error fetching data from URL: {url} - {str(e)}')
+    except Exception as e:
+        raise Exception(f'Unexpected error: {str(e)}')
 
 def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=None, end_date=None):
     global stop_process
@@ -120,45 +103,16 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
     return results
 
 def fetch_page_data(url, headers, date_key, start_date, end_date):
-    global stop_process
-    max_retries = len(TOKENS)
-    attempts = 0
-    
-    while attempts < max_retries:
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-
-            # Print rate limit information and rotate token if remaining limit is very low
-            rate_limit_remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
-            print_rate_limit_info(response.headers)
-            if rate_limit_remaining < LOW_LIMIT_THRESHOLD:
-                print(f"Token limit is low ({rate_limit_remaining} remaining). Rotating token...")
-                rotate_token()
-                attempts += 1
-            else:
-                data = response.json()
-                if date_key and start_date and end_date:
-                    return [item for item in data if start_date <= datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date() <= end_date]
-                return data
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code == 403:
-                print(f"Token limit reached for token {current_token_index + 1}. Rotating token...")
-                rotate_token()
-                attempts += 1
-            else:
-                print(f"Error fetching data from URL: {url} - {str(e)}")
-                return []
-    print("All tokens have reached the limit.")
-    return []
-
-def print_rate_limit_info(headers):
-    rate_limit = headers.get('X-RateLimit-Limit')
-    rate_limit_remaining = headers.get('X-RateLimit-Remaining')
-    rate_limit_reset = headers.get('X-RateLimit-Reset')
-    
-    reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime('%Y-%m-%d %H:%M:%S') if rate_limit_reset else 'N/A'
-    print(f"Rate limit: {rate_limit}, Remaining: {rate_limit_remaining}, Reset time: {reset_time}")
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        if date_key and start_date and end_date:
+            return [item for item in data if start_date <= datetime.strptime(item[date_key], '%Y-%m-%dT%H:%M:%SZ').date() <= end_date]
+        return data
+    except Exception as e:
+        print(f"Error fetching data from URL: {url} - {str(e)}")
+        return []
 
 def get_comments_with_initial(issue_url, headers, initial_comment, issue_number):
     comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}')
