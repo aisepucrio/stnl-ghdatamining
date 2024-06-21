@@ -9,18 +9,10 @@ import threading
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from time import time
-import psycopg2
-from psycopg2 import sql
-from tkcalendar import DateEntry  # Import DateEntry from tkcalendar
 
 # Load environment variables
 load_dotenv()
 TOKENS = os.getenv('TOKENS').split(',')
-PG_HOST = os.getenv('PG_HOST')
-PG_DATABASE = os.getenv('PG_DATABASE')
-PG_USER = os.getenv('PG_USER')
-PG_PASSWORD = os.getenv('PG_PASSWORD')
-
 current_token_index = 0
 
 # Define authentication headers with the first token
@@ -29,19 +21,10 @@ headers = {
     'Accept': 'application/vnd.github.v3+json'
 }
 
-LOW_LIMIT_THRESHOLD = 1750  # Threshold to trigger token rotation
-
-# Connect to PostgreSQL
-conn = psycopg2.connect(
-    host=PG_HOST,
-    database=PG_DATABASE,
-    user=PG_USER,
-    password=PG_PASSWORD
-)
-cursor = conn.cursor()
-
 # Control variable to stop the process
 stop_process = False
+
+LOW_LIMIT_THRESHOLD = 1750  # Threshold to trigger token rotation
 
 def rotate_token():
     global current_token_index, headers
@@ -270,57 +253,13 @@ def get_branches(repo_name, headers):
     } for branch in branches if 'name' in branch and 'commit' in branch and 'sha' in branch['commit']]
     return essential_branches
 
-def create_schema_and_tables(repo_name):
-    schema_name = repo_name.replace('/', '_').replace('-', '_')
-    
-    # Create schema
-    cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema_name)))
-
-    # Create commits table
-    cursor.execute(sql.SQL("""
-    CREATE TABLE IF NOT EXISTS {}.commits (
-        sha VARCHAR(255) PRIMARY KEY,
-        message TEXT,
-        date TIMESTAMP,
-        author VARCHAR(255)
-    )""").format(sql.Identifier(schema_name)))
-    
-    # Create issues table
-    cursor.execute(sql.SQL("""
-    CREATE TABLE IF NOT EXISTS {}.issues (
-        number INTEGER PRIMARY KEY,
-        title TEXT,
-        state VARCHAR(50),
-        creator VARCHAR(255),
-        comments JSONB
-    )""").format(sql.Identifier(schema_name)))
-    
-    # Create pull_requests table
-    cursor.execute(sql.SQL("""
-    CREATE TABLE IF NOT EXISTS {}.pull_requests (
-        number INTEGER PRIMARY KEY,
-        title TEXT,
-        state VARCHAR(50),
-        creator VARCHAR(255),
-        comments JSONB
-    )""").format(sql.Identifier(schema_name)))
-    
-    # Create branches table
-    cursor.execute(sql.SQL("""
-    CREATE TABLE IF NOT EXISTS {}.branches (
-        name VARCHAR(255) PRIMARY KEY,
-        sha VARCHAR(255)
-    )""").format(sql.Identifier(schema_name)))
-
-    conn.commit()
-
 # Função chamada ao clicar no botão "Get Information"
 def get_information():
     global stop_process
     stop_process = False  # Reset the control variable
     repo_url = entry_url.get()
-    start_date = entry_start_date.get_date()
-    end_date = entry_end_date.get_date()
+    start_date = entry_start_date.get()
+    end_date = entry_end_date.get()
 
     def collect_data():
         try:
@@ -328,13 +267,11 @@ def get_information():
             print("Start collecting data...")  # Debug message
             repo_name = get_repo_name(repo_url)
             print(f"Repository name: {repo_name}")  # Debug message
-            schema_name = repo_name.replace('/', '_').replace('-', '_')
-            
-            create_schema_and_tables(repo_name)
-            
+            data = {}
+
             # Convert dates to ISO 8601 format with the required time adjustments
-            start_date_iso = start_date.strftime('%Y-%m-%d') + 'T00:00:01Z'
-            end_date_iso = end_date.strftime('%Y-%m-%d') + 'T23:59:59Z'
+            start_date_iso = datetime.strptime(start_date, '%d/%m/%Y').strftime('%Y-%m-%d') + 'T00:00:01Z'
+            end_date_iso = datetime.strptime(end_date, '%d/%m/%Y').strftime('%Y-%m-%d') + 'T23:59:59Z'
 
             print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
 
@@ -346,58 +283,38 @@ def get_information():
 
                 if future_commits:
                     commits = future_commits.result()
-                    for commit in commits:
-                        cursor.execute(sql.SQL("""
-                        INSERT INTO {}.commits (sha, message, date, author) 
-                        VALUES (%s, %s, %s, %s) ON CONFLICT (sha) DO NOTHING
-                        """).format(sql.Identifier(schema_name)),
-                        (commit['sha'], commit['message'], commit['date'], commit['author']))
-                    conn.commit()
+                    data['commits'] = commits
                     print(f"Commits: {len(commits)}")  # Debug message
-                    
                 if future_issues:
                     issues = future_issues.result()
-                    for issue in issues:
-                        cursor.execute(sql.SQL("""
-                        INSERT INTO {}.issues (number, title, state, creator, comments) 
-                        VALUES (%s, %s, %s, %s, %s) ON CONFLICT (number) DO NOTHING
-                        """).format(sql.Identifier(schema_name)),
-                        (issue['number'], issue['title'], issue['state'], issue['creator'], json.dumps(issue['comments'])))
-                    conn.commit()
+                    data['issues'] = issues
                     print(f"Issues: {len(issues)}")  # Debug message
-                    
                 if future_pull_requests:
                     pull_requests = future_pull_requests.result()
-                    for pr in pull_requests:
-                        cursor.execute(sql.SQL("""
-                        INSERT INTO {}.pull_requests (number, title, state, creator, comments) 
-                        VALUES (%s, %s, %s, %s, %s) ON CONFLICT (number) DO NOTHING
-                        """).format(sql.Identifier(schema_name)),
-                        (pr['number'], pr['title'], pr['state'], pr['creator'], json.dumps(pr['comments'])))
-                    conn.commit()
+                    data['pull_requests'] = pull_requests
                     print(f"Pull Requests: {len(pull_requests)}")  # Debug message
-                    
                 if future_branches:
                     branches = future_branches.result()
-                    for branch in branches:
-                        cursor.execute(sql.SQL("""
-                        INSERT INTO {}.branches (name, sha) 
-                        VALUES (%s, %s) ON CONFLICT (name) DO NOTHING
-                        """).format(sql.Identifier(schema_name)),
-                        (branch['name'], branch['sha']))
-                    conn.commit()
+                    data['branches'] = branches
                     print(f"Branches: {len(branches)}")  # Debug message
+
+            # JSON file name based on account and repository name
+            repo_owner, repo_name_only = repo_name.split('/')
+            file_name = f"{repo_owner}_{repo_name_only}_data.json"
+
+            with open(file_name, 'w') as json_file:
+                json.dump(data, json_file, indent=4)
 
             # Build simplified result message
             message = ""
-            if future_commits:
-                message += f"Commits: {len(commits)}\n"
-            if future_issues:
-                message += f"Issues: {len(issues)}\n"
-            if future_pull_requests:
-                message += f"Pull Requests: {len(pull_requests)}\n"
-            if future_branches:
-                message += f"Branches: {len(branches)}\n"
+            if 'commits' in data:
+                message += f"Commits: {len(data['commits'])}\n"
+            if 'issues' in data:
+                message += f"Issues: {len(data['issues'])}\n"
+            if 'pull_requests' in data:
+                message += f"Pull Requests: {len(data['pull_requests'])}\n"
+            if 'branches' in data:
+                message += f"Branches: {len(data['branches'])}\n"
 
             if not message.strip():
                 message = "No data found for the given date range."
@@ -447,13 +364,13 @@ entry_url.pack(pady=12, padx=10)
 label_start_date = customtkinter.CTkLabel(master=frame, text="Start Date (DD/MM/YYYY)", font=default_font)
 label_start_date.pack(pady=12, padx=10)
 
-entry_start_date = DateEntry(master=frame, date_pattern='dd/MM/yyyy', width=12, background='darkblue', foreground='white', borderwidth=2)
+entry_start_date = customtkinter.CTkEntry(master=frame, placeholder_text='Enter start date', width=400, font=default_font)
 entry_start_date.pack(pady=12, padx=10)
 
 label_end_date = customtkinter.CTkLabel(master=frame, text="End Date (DD/MM/YYYY)", font=default_font)
 label_end_date.pack(pady=12, padx=10)
 
-entry_end_date = DateEntry(master=frame, date_pattern='dd/MM/yyyy', width=12, background='darkblue', foreground='white', borderwidth=2)
+entry_end_date = customtkinter.CTkEntry(master=frame, placeholder_text='Enter end date', width=400, font=default_font)
 entry_end_date.pack(pady=12, padx=10)
 
 # Create a frame for the switches and center it
