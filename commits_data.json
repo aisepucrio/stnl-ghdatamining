@@ -1,0 +1,164 @@
+[
+    {
+        "commit_hash": "1668358fe026f3aa3641635876a71568e7ced9d0",
+        "author": "Breno Braga",
+        "date": "2024-05-16T11:55:39-03:00",
+        "message": "Initial commit",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 2,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "15391c8e016fe187c2c2c01574818db1d39d0cbe",
+        "author": "Breno Braga",
+        "date": "2024-05-16T11:58:35-03:00",
+        "message": "Update README.md",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 34,
+        "number_of_lines_deleted": 2
+    },
+    {
+        "commit_hash": "b497f7ec1eacb4823d802aa05cb46bc9cab89412",
+        "author": "Breno Braga",
+        "date": "2024-05-16T12:00:49-03:00",
+        "message": "Update README.md",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 8,
+        "number_of_lines_deleted": 7
+    },
+    {
+        "commit_hash": "7753c918535f42c743819065de255265aa6cdc72",
+        "author": "Breno Braga",
+        "date": "2024-05-16T12:03:47-03:00",
+        "message": "First commit",
+        "number_of_modified_files": 7,
+        "number_of_lines_added": 590,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "f2c44a20f4f1e4f554b500a7d5cb13bebafc507d",
+        "author": "AISE Lab",
+        "date": "2024-05-16T12:28:37-03:00",
+        "message": "Update README.md",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 5,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "688e985f33cd9279a44d163cc9871d7cfa36856b",
+        "author": "Breno Braga",
+        "date": "2024-05-16T15:37:13-03:00",
+        "message": "Create app-v3.py\n\nAdicionando v3",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 200,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "f0d7f893d73f92a90d4acfec92677bdde5e68b3a",
+        "author": "Breno Braga",
+        "date": "2024-05-16T15:37:20-03:00",
+        "message": "Merge branch 'main' of https://github.com/aisepucrio/stnl-ghdatamining",
+        "number_of_modified_files": 0,
+        "number_of_lines_added": 5,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "0bbe089e3a55386a5cfabadde212be98009b7028",
+        "author": "Breno Braga",
+        "date": "2024-05-18T13:43:39-03:00",
+        "message": "Issues e pull requests comments add\n\n[STONE-45] Obten\u00e7\u00e3o dos coment\u00e1rios das issues e pull requests",
+        "number_of_modified_files": 3,
+        "number_of_lines_added": 236,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "1838737cb586300aff3fc7e43be8ac997101b71d",
+        "author": "Breno Braga",
+        "date": "2024-05-20T12:16:14-03:00",
+        "message": "Update README.md",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 2,
+        "number_of_lines_deleted": 2
+    },
+    {
+        "commit_hash": "8f74759525b407cbfd822e2376aa07874be4417a",
+        "author": "Breno Braga",
+        "date": "2024-05-21T16:51:42-03:00",
+        "message": "Adicionando bot\u00e3o de stop\n\n[STONE-51] Adicionando bot\u00e3o de stop",
+        "number_of_modified_files": 2,
+        "number_of_lines_added": 297,
+        "number_of_lines_deleted": 37
+    },
+    {
+        "commit_hash": "87de9652c18fa8b09dd843c04c49c5cbe30b05d4",
+        "author": "Breno Braga",
+        "date": "2024-05-23T16:02:05-03:00",
+        "message": "Filtro por data\n\n[STONE-62] Adicionando filtro por data e outros c\u00f3digos de teste",
+        "number_of_modified_files": 6,
+        "number_of_lines_added": 1177,
+        "number_of_lines_deleted": 53
+    },
+    {
+        "commit_hash": "df4d21ece0aab2fbfe9ca9205451c03227f24953",
+        "author": "PedroLopes",
+        "date": "2024-05-29T07:15:41-03:00",
+        "message": "Create default_lint.yml\n\nyml to check good code practices",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 44,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "0812df7301a0128a3b3d53dfb62d79c23c67df6e",
+        "author": "PedroLopes",
+        "date": "2024-05-29T07:26:40-03:00",
+        "message": "Update pylint.yml\n\nComment pre-commit before better analyses about why use that are made.",
+        "number_of_modified_files": 1,
+        "number_of_lines_added": 19,
+        "number_of_lines_deleted": 19
+    },
+    {
+        "commit_hash": "bb11bfbea3d03a4095688b0f5817e0c259f1e708",
+        "author": "Breno Braga",
+        "date": "2024-05-31T13:48:01-03:00",
+        "message": "feat: Adi\u00e7\u00e3o de filtro por data\n\nPossibilita a filtragem por data dos commits, issues e pull requests\n\nJIRA: [CSTONE-17][CSTONE-24]",
+        "number_of_modified_files": 4,
+        "number_of_lines_added": 81,
+        "number_of_lines_deleted": 197
+    },
+    {
+        "commit_hash": "b115f301090683ea28918f540797d731168445f4",
+        "author": "Breno Braga",
+        "date": "2024-05-31T13:48:21-03:00",
+        "message": "Merge branch 'main' of https://github.com/aisepucrio/stnl-ghdatamining",
+        "number_of_modified_files": 0,
+        "number_of_lines_added": 44,
+        "number_of_lines_deleted": 0
+    },
+    {
+        "commit_hash": "4c072b1f4360cc6dcf633017c1ad2bd4fd4d951c",
+        "author": "Breno Braga",
+        "date": "2024-06-11T13:20:52-03:00",
+        "message": "feat: Adicionando multiprocessing\n\nAdi\u00e7\u00e3o de multiprocessing para aumentar a velocidade de execu\u00e7\u00e3o do c\u00f3digo\n\nJIRA: [CSTONE-17][CSTONE-24]",
+        "number_of_modified_files": 3,
+        "number_of_lines_added": 761,
+        "number_of_lines_deleted": 49
+    },
+    {
+        "commit_hash": "f65c5300ccd15715fe961aeb722e8674f78545d5",
+        "author": "Breno Braga",
+        "date": "2024-06-11T17:54:41-03:00",
+        "message": "test: Adi\u00e7\u00e3o de um arquivo teste que roda com 24 threads e faz rota\u00e7\u00e3o de tokens\n\nJIRA: [CSTONE-17][CSTONE-24]",
+        "number_of_modified_files": 2,
+        "number_of_lines_added": 375,
+        "number_of_lines_deleted": 2
+    },
+    {
+        "commit_hash": "b27f415d7820c2bcfaf821781715afaedf000f4b",
+        "author": "Breno Braga",
+        "date": "2024-06-20T18:22:16-03:00",
+        "message": "feat: Agora ocorre o print de quanto falta para o limite da API ser atingido, o m\u00e1ximo de requisi\u00e7\u00f5es poss\u00edvel e quando que o uso ser\u00e1 resetado\n\nJIRA: [CSTONE-79][CSTONE-80]",
+        "number_of_modified_files": 3,
+        "number_of_lines_added": 437,
+        "number_of_lines_deleted": 38
+    }
+]
