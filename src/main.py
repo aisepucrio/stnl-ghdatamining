@@ -16,6 +16,7 @@ from tkcalendar import DateEntry  # Import DateEntry from tkcalendar
 # Load environment variables
 load_dotenv()
 TOKENS = os.getenv('TOKENS').split(',')
+USERNAMES = os.getenv('USERNAMES').split(',')
 PG_HOST = os.getenv('PG_HOST')
 PG_DATABASE = os.getenv('PG_DATABASE')
 PG_USER = os.getenv('PG_USER')
@@ -23,13 +24,13 @@ PG_PASSWORD = os.getenv('PG_PASSWORD')
 
 current_token_index = 0
 
-# Define authentication headers with the first token
+# Define authentication headers with the first token and username
 headers = {
-    'Authorization': f'token {TOKENS[current_token_index]}',
     'Accept': 'application/vnd.github.v3+json'
 }
+auth = (USERNAMES[current_token_index], TOKENS[current_token_index])
 
-LOW_LIMIT_THRESHOLD = 1750  # Threshold to trigger token rotation
+LOW_LIMIT_THRESHOLD = 100  # Threshold to trigger token rotation
 
 # Connect to PostgreSQL
 conn = psycopg2.connect(
@@ -44,9 +45,9 @@ cursor = conn.cursor()
 stop_process = False
 
 def rotate_token():
-    global current_token_index, headers
+    global current_token_index, auth
     current_token_index = (current_token_index + 1) % len(TOKENS)
-    headers['Authorization'] = f'token {TOKENS[current_token_index]}'
+    auth = (USERNAMES[current_token_index], TOKENS[current_token_index])
     print(f"Rotated to token {current_token_index + 1}")
 
 def get_repo_name(repo_url):
@@ -59,18 +60,17 @@ def get_repo_name(repo_url):
     except Exception as e:
         raise ValueError("Error parsing repository URL. Check the format and try again.")
 
-def get_total_pages(url, headers, params=None):
+def get_total_pages(url, headers, auth, params=None):
     max_retries = len(TOKENS)
     attempts = 0
     
     while attempts < max_retries:
         try:
-            response = requests.get(f"{url}?per_page=1", headers=headers, params=params)
+            response = requests.get(f"{url}?per_page=1", headers=headers, auth=auth, params=params)
             response.raise_for_status()
             
-            # Print rate limit information and rotate token if remaining limit is very low
+            # Rotate token if remaining limit is very low
             rate_limit_remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
-            print_rate_limit_info(response.headers)
             if rate_limit_remaining < LOW_LIMIT_THRESHOLD:
                 print(f"Token limit is low ({rate_limit_remaining} remaining). Rotating token...")
                 rotate_token()
@@ -94,7 +94,7 @@ def get_total_pages(url, headers, params=None):
             raise Exception(f'Unexpected error: {str(e)}')
     raise Exception("All tokens have reached the limit.")
 
-def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=None, end_date=None):
+def get_all_pages(url, headers, auth, desc, params=None, date_key=None, start_date=None, end_date=None):
     global stop_process
     results = []
 
@@ -105,13 +105,13 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
         end_date = datetime.strptime(end_date[:10], '%Y-%m-%d').date()
 
     try:
-        total_pages = get_total_pages(url, headers, params)
+        total_pages = get_total_pages(url, headers, auth, params)
     except Exception as e:
         print(e)
         return results
 
     with tqdm(total=total_pages, desc=desc, unit="page") as pbar:
-        with ProcessPoolExecutor(max_workers=8) as executor:
+        with ProcessPoolExecutor(max_workers=24) as executor:
             futures = []
             for page in range(1, total_pages + 1):
                 if stop_process:
@@ -122,7 +122,7 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
                     full_url = f"{url}?{urlencode(params)}"
                 else:
                     full_url = f"{url}?page={page}"
-                futures.append(executor.submit(fetch_page_data, full_url, headers, date_key, start_date, end_date))
+                futures.append(executor.submit(fetch_page_data, full_url, headers, auth, date_key, start_date, end_date))
 
             for future in as_completed(futures):
                 try:
@@ -136,21 +136,19 @@ def get_all_pages(url, headers, desc, params=None, date_key=None, start_date=Non
 
     return results
 
-def fetch_page_data(url, headers, date_key, start_date, end_date):
+def fetch_page_data(url, headers, auth, date_key, start_date, end_date):
     global stop_process
     max_retries = len(TOKENS)
     attempts = 0
     
     while attempts < max_retries:
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, auth=auth)
             response.raise_for_status()
 
-            # Print rate limit information and rotate token if remaining limit is very low
+            # Rotate token if remaining limit is very low
             rate_limit_remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
-            print_rate_limit_info(response.headers)
             if rate_limit_remaining < LOW_LIMIT_THRESHOLD:
-                print(f"Token limit is low ({rate_limit_remaining} remaining). Rotating token...")
                 rotate_token()
                 attempts += 1
             else:
@@ -160,7 +158,6 @@ def fetch_page_data(url, headers, date_key, start_date, end_date):
                 return data
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 403:
-                print(f"Token limit reached for token {current_token_index + 1}. Rotating token...")
                 rotate_token()
                 attempts += 1
             else:
@@ -169,16 +166,8 @@ def fetch_page_data(url, headers, date_key, start_date, end_date):
     print("All tokens have reached the limit.")
     return []
 
-def print_rate_limit_info(headers):
-    rate_limit = headers.get('X-RateLimit-Limit')
-    rate_limit_remaining = headers.get('X-RateLimit-Remaining')
-    rate_limit_reset = headers.get('X-RateLimit-Reset')
-    
-    reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime('%Y-%m-%d %H:%M:%S') if rate_limit_reset else 'N/A'
-    print(f"Rate limit: {rate_limit}, Remaining: {rate_limit_remaining}, Reset time: {reset_time}")
-
-def get_comments_with_initial(issue_url, headers, initial_comment, issue_number):
-    comments = get_all_pages(issue_url, headers, f'Fetching comments for issue/pr #{issue_number}')
+def get_comments_with_initial(issue_url, headers, auth, initial_comment, issue_number):
+    comments = get_all_pages(issue_url, headers, auth, f'Fetching comments for issue/pr #{issue_number}')
     essential_comments = [{
         'user': initial_comment['user']['login'],
         'body': initial_comment['body'],
@@ -191,14 +180,14 @@ def get_comments_with_initial(issue_url, headers, initial_comment, issue_number)
     } for comment in comments if 'user' in comment and 'login' in comment['user'] and 'body' in comment and 'created_at' in comment])
     return essential_comments
 
-def get_commits(repo_name, headers, start_date, end_date):
+def get_commits(repo_name, headers, auth, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/commits'
     params = {
         'since': f'{start_date}T00:00:01Z',
         'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
-    commits = get_all_pages(url, headers, 'Fetching commits', params)
+    commits = get_all_pages(url, headers, auth, 'Fetching commits', params)
     essential_commits = [{
         'sha': commit['sha'],
         'message': commit['commit']['message'],
@@ -207,14 +196,14 @@ def get_commits(repo_name, headers, start_date, end_date):
     } for commit in commits if 'sha' in commit and 'commit' in commit and 'message' in commit['commit'] and 'author' in commit['commit'] and 'date' in commit['commit']['author'] and 'name' in commit['commit']['author']]
     return essential_commits
 
-def get_issues(repo_name, headers, start_date, end_date):
+def get_issues(repo_name, headers, auth, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/issues'
     params = {
         'since': f'{start_date}T00:00:01Z',
         'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
-    issues = get_all_pages(url, headers, 'Fetching issues', params, 'created_at', start_date, end_date)
+    issues = get_all_pages(url, headers, auth, 'Fetching issues', params, 'created_at', start_date, end_date)
     essential_issues = []
     for issue in issues:
         if 'number' in issue and 'title' in issue and 'state' in issue and 'user' in issue and 'login' in issue['user']:
@@ -224,7 +213,7 @@ def get_issues(repo_name, headers, start_date, end_date):
                 'body': issue['body'],
                 'created_at': issue['created_at']
             }
-            comments = get_comments_with_initial(issue_comments_url, headers, initial_comment, issue['number'])
+            comments = get_comments_with_initial(issue_comments_url, headers, auth, initial_comment, issue['number'])
             essential_issues.append({
                 'number': issue['number'],
                 'title': issue['title'],
@@ -234,14 +223,14 @@ def get_issues(repo_name, headers, start_date, end_date):
             })
     return essential_issues
 
-def get_pull_requests(repo_name, headers, start_date, end_date):
+def get_pull_requests(repo_name, headers, auth, start_date, end_date):
     url = f'https://api.github.com/repos/{repo_name}/pulls'
     params = {
         'since': f'{start_date}T00:00:01Z',
         'until': f'{end_date}T23:59:59Z',
         'per_page': 35
     }
-    pull_requests = get_all_pages(url, headers, 'Fetching pull requests', params, 'created_at', start_date, end_date)
+    pull_requests = get_all_pages(url, headers, auth, 'Fetching pull requests', params, 'created_at', start_date, end_date)
     essential_pull_requests = []
     for pr in pull_requests:
         if 'number' in pr and 'title' in pr and 'state' in pr and 'user' in pr and 'login' in pr['user']:
@@ -251,7 +240,7 @@ def get_pull_requests(repo_name, headers, start_date, end_date):
                 'body': pr['body'],
                 'created_at': pr['created_at']
             }
-            comments = get_comments_with_initial(pr_comments_url, headers, initial_comment, pr['number'])
+            comments = get_comments_with_initial(pr_comments_url, headers, auth, initial_comment, pr['number'])
             essential_pull_requests.append({
                 'number': pr['number'],
                 'title': pr['title'],
@@ -261,9 +250,9 @@ def get_pull_requests(repo_name, headers, start_date, end_date):
             })
     return essential_pull_requests
 
-def get_branches(repo_name, headers):
+def get_branches(repo_name, headers, auth):
     url = f'https://api.github.com/repos/{repo_name}/branches'
-    branches = get_all_pages(url, headers, 'Fetching branches')
+    branches = get_all_pages(url, headers, auth, 'Fetching branches')
     essential_branches = [{
         'name': branch['name'],
         'sha': branch['commit']['sha']
@@ -314,6 +303,10 @@ def create_schema_and_tables(repo_name):
 
     conn.commit()
 
+def save_to_json(data, filename):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
 # Função chamada ao clicar no botão "Get Information"
 def get_information():
     global stop_process
@@ -325,9 +318,9 @@ def get_information():
     def collect_data():
         try:
             start_time = time()
-            print("Start collecting data...")  # Debug message
+            print("Start collecting data...")
             repo_name = get_repo_name(repo_url)
-            print(f"Repository name: {repo_name}")  # Debug message
+            print(f"Repository name: {repo_name}")
             schema_name = repo_name.replace('/', '_').replace('-', '_')
             
             create_schema_and_tables(repo_name)
@@ -336,16 +329,19 @@ def get_information():
             start_date_iso = start_date.strftime('%Y-%m-%d') + 'T00:00:01Z'
             end_date_iso = end_date.strftime('%Y-%m-%d') + 'T23:59:59Z'
 
-            print(f"Start date: {start_date_iso}, End date: {end_date_iso}")  # Debug message
+            print(f"Start date: {start_date_iso}, End date: {end_date_iso}")
+
+            all_data = {}
 
             with ProcessPoolExecutor(max_workers=24) as executor:
-                future_commits = executor.submit(get_commits, repo_name, headers, start_date_iso, end_date_iso) if switch_commits.get() == 1 else None
-                future_issues = executor.submit(get_issues, repo_name, headers, start_date_iso, end_date_iso) if switch_issues.get() == 1 else None
-                future_pull_requests = executor.submit(get_pull_requests, repo_name, headers, start_date_iso, end_date_iso) if switch_pull_requests.get() == 1 else None
-                future_branches = executor.submit(get_branches, repo_name, headers) if switch_branches.get() == 1 else None
+                future_commits = executor.submit(get_commits, repo_name, headers, auth, start_date_iso, end_date_iso) if switch_commits.get() == 1 else None
+                future_issues = executor.submit(get_issues, repo_name, headers, auth, start_date_iso, end_date_iso) if switch_issues.get() == 1 else None
+                future_pull_requests = executor.submit(get_pull_requests, repo_name, headers, auth, start_date_iso, end_date_iso) if switch_pull_requests.get() == 1 else None
+                future_branches = executor.submit(get_branches, repo_name, headers, auth) if switch_branches.get() == 1 else None
 
                 if future_commits:
                     commits = future_commits.result()
+                    all_data['commits'] = commits
                     for commit in commits:
                         cursor.execute(sql.SQL("""
                         INSERT INTO {}.commits (sha, message, date, author) 
@@ -353,10 +349,11 @@ def get_information():
                         """).format(sql.Identifier(schema_name)),
                         (commit['sha'], commit['message'], commit['date'], commit['author']))
                     conn.commit()
-                    print(f"Commits: {len(commits)}")  # Debug message
+                    print(f"Commits: {len(commits)}")
                     
                 if future_issues:
                     issues = future_issues.result()
+                    all_data['issues'] = issues
                     for issue in issues:
                         cursor.execute(sql.SQL("""
                         INSERT INTO {}.issues (number, title, state, creator, comments) 
@@ -364,10 +361,11 @@ def get_information():
                         """).format(sql.Identifier(schema_name)),
                         (issue['number'], issue['title'], issue['state'], issue['creator'], json.dumps(issue['comments'])))
                     conn.commit()
-                    print(f"Issues: {len(issues)}")  # Debug message
+                    print(f"Issues: {len(issues)}")
                     
                 if future_pull_requests:
                     pull_requests = future_pull_requests.result()
+                    all_data['pull_requests'] = pull_requests
                     for pr in pull_requests:
                         cursor.execute(sql.SQL("""
                         INSERT INTO {}.pull_requests (number, title, state, creator, comments) 
@@ -375,10 +373,11 @@ def get_information():
                         """).format(sql.Identifier(schema_name)),
                         (pr['number'], pr['title'], pr['state'], pr['creator'], json.dumps(pr['comments'])))
                     conn.commit()
-                    print(f"Pull Requests: {len(pull_requests)}")  # Debug message
+                    print(f"Pull Requests: {len(pull_requests)}")
                     
                 if future_branches:
                     branches = future_branches.result()
+                    all_data['branches'] = branches
                     for branch in branches:
                         cursor.execute(sql.SQL("""
                         INSERT INTO {}.branches (name, sha) 
@@ -386,9 +385,10 @@ def get_information():
                         """).format(sql.Identifier(schema_name)),
                         (branch['name'], branch['sha']))
                     conn.commit()
-                    print(f"Branches: {len(branches)}")  # Debug message
+                    print(f"Branches: {len(branches)}")
 
-            # Build simplified result message
+            save_to_json(all_data, f"{schema_name}.json")
+
             message = ""
             if future_commits:
                 message += f"Commits: {len(commits)}\n"
@@ -405,19 +405,18 @@ def get_information():
             
             result_label.configure(text=message.strip())
             end_time = time()
-            print(f"Data collection completed in {end_time - start_time:.2f} seconds.")  # Debug message
+            print(f"Data collection completed in {end_time - start_time:.2f} seconds.")
 
         except ValueError as ve:
-            print(f"ValueError: {str(ve)}")  # Debug message
+            print(f"ValueError: {str(ve)}")
             result_label.configure(text=str(ve))
         except Exception as e:
-            print(f"Exception: {str(e)}")  # Debug message
+            print(f"Exception: {str(e)}")
             result_label.configure(text=f"Unexpected error: {str(e)}")
     
     thread = threading.Thread(target=collect_data)
     thread.start()
     
-
 # Função chamada ao clicar no botão "Stop"
 def stop_process_function():
     global stop_process
